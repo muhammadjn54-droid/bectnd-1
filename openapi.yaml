@@ -1,0 +1,334 @@
+openapi: 3.0.3
+info:
+  title: Product API
+  description: >
+    API for managing products (name, quantity, cost price, sell price — with
+    automatic profit calculation) and uploading product images (minimum 2,
+    maximum 6 photos per product). Uploaded images are automatically
+    compressed and resized on the server for fast, lightweight delivery.
+  version: 2.0.0
+servers:
+  - url: https://becend-7ryb.onrender.com/api
+    description: Production server (Render)
+  - url: http://localhost:3000/api
+    description: Local development server
+
+tags:
+  - name: Products
+    description: Create, read, update and delete products, with cost/sell price and profit
+  - name: Images
+    description: Upload and manage product images (auto-compressed)
+
+paths:
+  /products:
+    get:
+      tags: [Products]
+      summary: List all products
+      operationId: listProducts
+      responses:
+        "200":
+          description: A list of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      tags: [Products]
+      summary: Create a new product
+      description: >
+        Creates a product with a name, quantity, purchase price (costPrice)
+        and selling price (sellPrice). Profit fields are calculated
+        automatically. Images are uploaded separately via
+        POST /products/{productId}/images.
+      operationId: createProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+            examples:
+              default:
+                summary: "Example: 50 pens bought at 0.50 somoni, sold at 1 somoni"
+                value:
+                  name: "Ручка"
+                  quantity: 50
+                  costPrice: 0.50
+                  sellPrice: 1.00
+      responses:
+        "201":
+          description: Product created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /products/{productId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    get:
+      tags: [Products]
+      summary: Get a single product by ID
+      operationId: getProduct
+      responses:
+        "200":
+          description: The requested product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [Products]
+      summary: Update a product's name, quantity, cost price, or sell price
+      operationId: updateProduct
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "200":
+          description: Product updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [Products]
+      summary: Delete a product
+      operationId: deleteProduct
+      responses:
+        "204":
+          description: Product deleted
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /products/{productId}/images:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+    post:
+      tags: [Images]
+      summary: Upload product images (2 to 6 photos, auto-compressed)
+      description: >
+        Accepts between 2 and 6 image files in a single multipart/form-data
+        request. Allowed types: image/jpeg, image/png, image/webp.
+        Max raw size per image: 15 MB. Each image is automatically resized
+        (max width 1280px) and re-encoded as WebP on the server, so stored
+        and served files are small and load fast.
+      operationId: uploadProductImages
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                images:
+                  type: array
+                  minItems: 2
+                  maxItems: 6
+                  items:
+                    type: string
+                    format: binary
+              required:
+                - images
+      responses:
+        "201":
+          description: Images uploaded, compressed, and saved successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: >
+            Validation error - e.g. fewer than 2 or more than 6 images,
+            unsupported file type, or file too large
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    get:
+      tags: [Images]
+      summary: List images for a product
+      operationId: listProductImages
+      responses:
+        "200":
+          description: List of image URLs for this product
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProductImage"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /products/{productId}/images/{imageId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductId"
+      - name: imageId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: The image identifier
+    delete:
+      tags: [Images]
+      summary: Delete a single product image
+      operationId: deleteProductImage
+      responses:
+        "204":
+          description: Image deleted
+        "404":
+          description: Product or image not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: The product identifier
+
+  schemas:
+    ProductInput:
+      type: object
+      required:
+        - name
+        - quantity
+        - costPrice
+        - sellPrice
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+          example: "Ручка"
+        quantity:
+          type: integer
+          minimum: 0
+          description: Number of units in stock
+          example: 50
+        costPrice:
+          type: number
+          format: float
+          minimum: 0
+          description: Purchase price per unit (нархи харид, барои як дона)
+          example: 0.50
+        sellPrice:
+          type: number
+          format: float
+          minimum: 0
+          description: Selling price per unit (нархи фурӯш, барои як дона)
+          example: 1.00
+
+    Product:
+      allOf:
+        - $ref: "#/components/schemas/ProductInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              example: "3f1b2c4d-5678-4e9a-bc12-abcdef123456"
+            profitPerUnit:
+              type: number
+              description: sellPrice - costPrice
+              example: 0.50
+            totalCost:
+              type: number
+              description: costPrice * quantity (total money spent buying stock)
+              example: 25.00
+            totalRevenue:
+              type: number
+              description: sellPrice * quantity (total money if all units sell)
+              example: 50.00
+            totalProfit:
+              type: number
+              description: totalRevenue - totalCost (total profit if all units sell)
+              example: 25.00
+            images:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductImage"
+            createdAt:
+              type: string
+              format: date-time
+            updatedAt:
+              type: string
+              format: date-time
+
+    ProductImage:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "img_1a2b3c"
+        url:
+          type: string
+          example: "/uploads/img_1a2b3c.webp"
+        originalName:
+          type: string
+          example: "mouse-front.jpg"
+        size:
+          type: integer
+          description: Compressed file size in bytes (after server-side resize/compression)
+          example: 48200
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Validation failed"
+        details:
+          type: array
+          items:
+            type: string
+          example: ["quantity must be a non-negative integer"]
