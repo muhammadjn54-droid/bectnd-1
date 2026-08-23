@@ -34,8 +34,36 @@ app.use(
   express.static(UPLOAD_DIR, { maxAge: "7d" })
 );
 
-// In-memory "database"
-const products = new Map();
+// ---------- Persistent JSON "database" ----------
+const DB_PATH = path.join(__dirname, "db.json");
+
+// Load existing products from disk (survives server restarts)
+function loadProducts() {
+  const map = new Map();
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const data = JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
+      if (Array.isArray(data)) {
+        for (const p of data) map.set(p.id, p);
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load db.json, starting with empty database:", err.message);
+  }
+  return map;
+}
+
+// Save current products to disk
+function saveProducts() {
+  try {
+    const data = JSON.stringify(Array.from(products.values()), null, 2);
+    fs.writeFileSync(DB_PATH, data, "utf-8");
+  } catch (err) {
+    console.error("Failed to save db.json:", err.message);
+  }
+}
+
+const products = loadProducts();
 
 // ---------- Swagger UI ----------
 const swaggerDocument = YAML.load(path.join(__dirname, "openapi.yaml"));
@@ -184,6 +212,7 @@ app.post("/api/products", (req, res) => {
     updatedAt: now,
   };
   products.set(product.id, product);
+  saveProducts();
   res.status(201).json(withComputedFields(product));
 });
 
@@ -209,6 +238,7 @@ app.put("/api/products/:productId", (req, res) => {
   product.costPrice = req.body.costPrice;
   product.sellPrice = req.body.sellPrice;
   product.updatedAt = new Date().toISOString();
+  saveProducts();
 
   res.status(200).json(withComputedFields(product));
 });
@@ -224,6 +254,7 @@ app.delete("/api/products/:productId", (req, res) => {
   }
 
   products.delete(product.id);
+  saveProducts();
   res.status(204).send();
 });
 
@@ -284,6 +315,7 @@ app.post("/api/products/:productId/images", (req, res) => {
 
       product.images.push(...newImages);
       product.updatedAt = new Date().toISOString();
+      saveProducts();
 
       res.status(201).json(withComputedFields(product));
     } catch (compressionErr) {
@@ -316,6 +348,7 @@ app.delete("/api/products/:productId/images/:imageId", (req, res) => {
   const [removed] = product.images.splice(idx, 1);
   fs.unlink(path.join(UPLOAD_DIR, path.basename(removed.url)), () => {});
   product.updatedAt = new Date().toISOString();
+  saveProducts();
 
   res.status(204).send();
 });
